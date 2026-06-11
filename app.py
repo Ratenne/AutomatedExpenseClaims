@@ -66,7 +66,7 @@ def _cfg(psm: int) -> str:
 #  이미지 전처리
 #  벤치마크 결과: 2x upscale → grayscale → unsharp mask
 # ──────────────────────────────────────────
-def preprocess(img_bytes: bytes):
+def preprocess(img_bytes: bytes, filename: str = 'unknown'):
     """
     반환값: (raw_gray, sharpened)
       - raw_gray  : unsharp 미적용 grayscale (vendor 크롭 재OCR용)
@@ -82,7 +82,10 @@ def preprocess(img_bytes: bytes):
     max_edge = 2600 if OCR_FAST_MODE else 4000
     max_upscale = 1.5 if OCR_FAST_MODE else 2.0
     scale = min(max_upscale, max_edge / max(h, w))
-    img = cv2.resize(img, (int(w * scale), int(h * scale)),
+    resized_h = int(h * scale)
+    resized_w = int(w * scale)
+    log_image_profile(filename, h, w, resized_h, resized_w, scale)
+    img = cv2.resize(img, (resized_w, resized_h),
                      interpolation=cv2.INTER_CUBIC)
 
     # 2) Grayscale
@@ -97,6 +100,51 @@ def preprocess(img_bytes: bytes):
     sharpened = cv2.addWeighted(gray, 1.3, blurred, -0.3, 0)
 
     return gray, sharpened   # (raw, sharp) 튜플 반환
+
+
+def log_image_profile(filename: str, original_h: int, original_w: int, resized_h: int, resized_w: int, scale: float):
+    original_pixels = original_h * original_w
+    resized_pixels = resized_h * resized_w
+    max_edge = max(original_h, original_w)
+    edge_threshold = 2600 if OCR_FAST_MODE else 4000
+    pixel_threshold = 2_000_000
+
+    large_edge = max_edge > edge_threshold
+    high_pixel_count = original_pixels >= pixel_threshold
+    downscaled_by_factor = scale < 1.0
+
+    signal_scores = []
+    if large_edge:
+        signal_scores.append(('large_edge', max_edge / edge_threshold))
+    if high_pixel_count:
+        signal_scores.append(('high_pixel_count', original_pixels / pixel_threshold))
+    if downscaled_by_factor:
+        signal_scores.append(('downscaled_by_factor', 1.0 / scale))
+
+    primary_reason = max(signal_scores, key=lambda item: item[1])[0] if signal_scores else 'none'
+    heavy_signals = {
+        'large_edge': large_edge,
+        'high_pixel_count': high_pixel_count,
+        'downscaled_by_factor': downscaled_by_factor,
+    }
+
+    app.logger.info(
+        '[OCR] image profile filename=%s original=%dx%d(%dpx) resized=%dx%d(%dpx) scale=%.2f edge_threshold=%d pixel_threshold=%d signals=%s primary_reason=%s fast_mode=%s timeout=%ss',
+        filename,
+        original_h,
+        original_w,
+        original_pixels,
+        resized_h,
+        resized_w,
+        resized_pixels,
+        scale,
+        edge_threshold,
+        pixel_threshold,
+        heavy_signals,
+        primary_reason,
+        OCR_FAST_MODE,
+        OCR_TIMEOUT_SEC,
+    )
 
 
 # ──────────────────────────────────────────
@@ -183,7 +231,13 @@ def run_ocr(raw_gray: np.ndarray, sharp: np.ndarray) -> str:
         }
         if OCR_FAST_MODE:
             kwargs['timeout'] = OCR_TIMEOUT_SEC
-        return pytesseract.image_to_string(sharp, **kwargs)
+        try:
+            return pytesseract.image_to_string(sharp, **kwargs)
+        except RuntimeError as e:
+            if OCR_FAST_MODE and 'Tesseract process timeout' in str(e):
+                app.logger.warning('[OCR] timeout skipped in fast mode psm=%s', psm)
+                return ''
+            raise
 
     if OCR_FAST_MODE:
         return _ocr_once(6)
@@ -487,7 +541,7 @@ def ocr():
     )
 
     try:
-        raw_gray, sharp = preprocess(img_bytes)
+        raw_gray, sharp = preprocess(img_bytes, filename)
         text            = run_ocr(raw_gray, sharp)
         crop_candidates = _reocr_vendor_crop(raw_gray, sharp)
         result          = parse_receipt(text, crop_candidates)
