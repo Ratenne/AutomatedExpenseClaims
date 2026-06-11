@@ -2,11 +2,14 @@ import os
 import re
 import json
 import logging
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 import cv2
 import numpy as np
 import pytesseract
 import platform
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -20,6 +23,7 @@ IS_RENDER = (
 )
 OCR_FAST_MODE = os.environ.get('OCR_FAST_MODE', '1' if IS_RENDER else '0') == '1'
 OCR_TIMEOUT_SEC = int(os.environ.get('OCR_TIMEOUT_SEC', '12'))
+OCR_ASYNC_MODE = IS_RENDER
 
 # 프로젝트 루트의 tessdata를 우선 사용한다.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +34,10 @@ if platform.system() == 'Windows':
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 os.environ.setdefault('TESSDATA_PREFIX', TESSDATA_DIR)
+
+OCR_JOB_LOCK = threading.Lock()
+OCR_JOBS = {}
+OCR_EXECUTOR = ThreadPoolExecutor(max_workers=1) if OCR_ASYNC_MODE else None
 
 # 설치된 언어 팩 자동 탐색 및 선택
 def _resolve_tess_lang(tessdata_dir: str) -> str:
@@ -80,7 +88,7 @@ def preprocess(img_bytes: bytes, filename: str = 'unknown'):
     # 1) 2배 업스케일 (배포 빠른 모드에서는 축소 상한을 낮춰 처리시간 절감)
     h, w = img.shape[:2]
     max_edge = 2600 if OCR_FAST_MODE else 4000
-    max_upscale = 1.5 if OCR_FAST_MODE else 2.0
+    max_upscale = 1.0 if OCR_FAST_MODE else 2.0
     scale = min(max_upscale, max_edge / max(h, w))
     resized_h = int(h * scale)
     resized_w = int(w * scale)
@@ -145,6 +153,51 @@ def log_image_profile(filename: str, original_h: int, original_w: int, resized_h
         OCR_FAST_MODE,
         OCR_TIMEOUT_SEC,
     )
+
+
+def _run_ocr_pipeline(img_bytes: bytes, filename: str) -> dict:
+    raw_gray, sharp = preprocess(img_bytes, filename)
+    text = run_ocr(raw_gray, sharp)
+    crop_candidates = _reocr_vendor_crop(raw_gray, sharp)
+    result = parse_receipt(text, crop_candidates)
+    app.logger.info('[OCR] success filename=%s parsed_amount=%s', filename, result.get('amount'))
+    return result
+
+
+def _set_job(job_id: str, **updates):
+    with OCR_JOB_LOCK:
+        job = OCR_JOBS.get(job_id, {})
+        job.update(updates)
+        OCR_JOBS[job_id] = job
+
+
+def _submit_ocr_job(img_bytes: bytes, filename: str, content_type: str) -> str:
+    job_id = uuid.uuid4().hex
+    _set_job(
+        job_id,
+        status='queued',
+        filename=filename,
+        content_type=content_type,
+        result=None,
+        error=None,
+    )
+
+    def _worker():
+        _set_job(job_id, status='running')
+        try:
+            result = _run_ocr_pipeline(img_bytes, filename)
+            _set_job(job_id, status='done', result=result)
+        except Exception as exc:
+            app.logger.exception('[OCR] async failed job_id=%s filename=%s error=%s', job_id, filename, str(exc))
+            _set_job(job_id, status='failed', error=str(exc))
+
+    OCR_EXECUTOR.submit(_worker)
+    return job_id
+
+
+def _get_job(job_id: str):
+    with OCR_JOB_LOCK:
+        return dict(OCR_JOBS.get(job_id, {}))
 
 
 # ──────────────────────────────────────────
@@ -224,7 +277,7 @@ def _reocr_vendor_crop(raw_gray: np.ndarray, sharp: np.ndarray) -> list:
 #  멀티패스 OCR
 # ──────────────────────────────────────────
 def run_ocr(raw_gray: np.ndarray, sharp: np.ndarray) -> str:
-    def _ocr_once(psm: int) -> str:
+    def _ocr_once(image: np.ndarray, psm: int) -> str:
         kwargs = {
             'lang': TESS_LANG,
             'config': _cfg(psm),
@@ -232,7 +285,7 @@ def run_ocr(raw_gray: np.ndarray, sharp: np.ndarray) -> str:
         if OCR_FAST_MODE:
             kwargs['timeout'] = OCR_TIMEOUT_SEC
         try:
-            return pytesseract.image_to_string(sharp, **kwargs)
+            return pytesseract.image_to_string(image, **kwargs)
         except RuntimeError as e:
             if OCR_FAST_MODE and 'Tesseract process timeout' in str(e):
                 app.logger.warning('[OCR] timeout skipped in fast mode psm=%s', psm)
@@ -240,11 +293,19 @@ def run_ocr(raw_gray: np.ndarray, sharp: np.ndarray) -> str:
             raise
 
     if OCR_FAST_MODE:
-        return _ocr_once(6)
+        for image, psm in (
+            (sharp, 6),
+            (raw_gray, 6),
+            (sharp, 11),
+        ):
+            text = _ocr_once(image, psm)
+            if text.strip():
+                return text
+        return ''
 
-    t4  = _ocr_once(4)
-    t6  = _ocr_once(6)
-    t11 = _ocr_once(11)
+    t4  = _ocr_once(sharp, 4)
+    t6  = _ocr_once(sharp, 6)
+    t11 = _ocr_once(sharp, 11)
     return t4 + '\n' + t6 + '\n' + t11
 
 
@@ -521,7 +582,7 @@ def parse_receipt(text: str, crop_candidates: list = None) -> dict:
 # ──────────────────────────────────────────
 @app.route('/')
 def index():
-    return send_from_directory('templates', 'index.html')
+    return render_template('index.html', is_render=IS_RENDER)
 
 
 @app.route('/ocr', methods=['POST'])
@@ -540,16 +601,42 @@ def ocr():
         len(img_bytes),
     )
 
+    if OCR_ASYNC_MODE:
+        job_id = _submit_ocr_job(img_bytes, filename, content_type)
+        app.logger.info('[OCR] queued filename=%s job_id=%s async=%s', filename, job_id, OCR_ASYNC_MODE)
+        return jsonify({
+            'job_id': job_id,
+            'status': 'queued',
+            'filename': filename,
+        }), 202
+
     try:
-        raw_gray, sharp = preprocess(img_bytes, filename)
-        text            = run_ocr(raw_gray, sharp)
-        crop_candidates = _reocr_vendor_crop(raw_gray, sharp)
-        result          = parse_receipt(text, crop_candidates)
-        app.logger.info('[OCR] success filename=%s parsed_amount=%s', filename, result.get('amount'))
+        result = _run_ocr_pipeline(img_bytes, filename)
         return jsonify(result)
     except Exception as e:
         app.logger.exception('[OCR] failed filename=%s error=%s', filename, str(e))
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/ocr/status/<job_id>', methods=['GET'])
+def ocr_status(job_id):
+    if not OCR_ASYNC_MODE:
+        return jsonify({'error': 'async OCR is disabled'}), 404
+
+    job = _get_job(job_id)
+    if not job:
+        return jsonify({'error': 'job not found'}), 404
+
+    payload = {
+        'job_id': job_id,
+        'status': job.get('status', 'queued'),
+        'filename': job.get('filename', 'unknown'),
+    }
+    if job.get('status') == 'done' and job.get('result'):
+        payload.update(job['result'])
+    if job.get('status') == 'failed':
+        payload['error'] = job.get('error', 'unknown error')
+    return jsonify(payload)
 
 
 if __name__ == '__main__':

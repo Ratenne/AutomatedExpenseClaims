@@ -247,6 +247,7 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
 
 <script>
 const API = window.location.origin;
+const OCR_ASYNC = {{ 'true' if is_render else 'false' }};
 let rows = [], nextId = 1, editingId = null;
 
 const $ = id => document.getElementById(id);
@@ -300,44 +301,72 @@ async function processFiles(files) {
     let stalledTimer = null;
 
     try {
-      // fake progress during fetch
-      let fakePct = 10;
-      ticker = setInterval(() => {
-        fakePct = Math.min(fakePct + 8, 85);
-        setProgress(fakePct, null, 'OCR 처리 중 (kor_best 모델)...');
-      }, 300);
-      debugLog('fetch started', { url: `${API}/ocr`, method: 'POST' });
+      if (OCR_ASYNC) {
+        setProgress(8, `${i+1}/${imgs.length} — ${file.name}`, 'OCR 작업을 서버에 등록하는 중...');
+        debugLog('async submit started', { url: `${API}/ocr`, method: 'POST' });
 
-      stalledTimer = setTimeout(() => {
-        debugLog('fetch still pending (>10s)', {
-          file: file.name,
-          progress: $('progressPct').textContent,
-          status: $('progressStatus').textContent
+        const submitRes = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
+        debugLog('async submit response received', {
+          ok: submitRes.ok,
+          status: submitRes.status,
+          statusText: submitRes.statusText,
+          url: submitRes.url
         });
-      }, 10000);
 
-      const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
-      debugLog('response received', {
-        ok: res.ok,
-        status: res.status,
-        statusText: res.statusText,
-        url: res.url
-      });
+        const submitData = await submitRes.json();
+        debugLog('async submit response body', submitData);
+        if (!submitRes.ok && submitRes.status !== 202) {
+          throw new Error(submitData.error || `서버 오류 ${submitRes.status}`);
+        }
+        if (!submitData.job_id) {
+          throw new Error('비동기 OCR 작업 ID를 받지 못했습니다.');
+        }
 
-      if (!res.ok) {
-        const errText = await res.text();
-        debugLog('response body (error)', errText);
-        throw new Error(`서버 오류 ${res.status}`);
+        const data = await waitForOcrJob(submitData.job_id, file.name);
+        setProgress(100, null, '완료 ✓');
+        rows.push({ ...data, id: nextId++ });
+        debugLog('row added', { rowId: nextId - 1, totalRows: rows.length });
+        renderTable();
+      } else {
+        // fake progress during fetch
+        let fakePct = 10;
+        ticker = setInterval(() => {
+          fakePct = Math.min(fakePct + 8, 85);
+          setProgress(fakePct, null, 'OCR 처리 중 (kor_best 모델)...');
+        }, 300);
+        debugLog('fetch started', { url: `${API}/ocr`, method: 'POST' });
+
+        stalledTimer = setTimeout(() => {
+          debugLog('fetch still pending (>10s)', {
+            file: file.name,
+            progress: $('progressPct').textContent,
+            status: $('progressStatus').textContent
+          });
+        }, 10000);
+
+        const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
+        debugLog('response received', {
+          ok: res.ok,
+          status: res.status,
+          statusText: res.statusText,
+          url: res.url
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          debugLog('response body (error)', errText);
+          throw new Error(`서버 오류 ${res.status}`);
+        }
+
+        const data = await res.json();
+        debugLog('response body (json)', data);
+        if (data.error) throw new Error(data.error);
+
+        setProgress(100, null, '완료 ✓');
+        rows.push({ ...data, id: nextId++ });
+        debugLog('row added', { rowId: nextId - 1, totalRows: rows.length });
+        renderTable();
       }
-
-      const data = await res.json();
-      debugLog('response body (json)', data);
-      if (data.error) throw new Error(data.error);
-
-      setProgress(100, null, '완료 ✓');
-      rows.push({ ...data, id: nextId++ });
-      debugLog('row added', { rowId: nextId - 1, totalRows: rows.length });
-      renderTable();
     } catch (err) {
       setProgress(0, null, `오류: ${err.message}`);
       debugLog('request failed', {
@@ -353,6 +382,37 @@ async function processFiles(files) {
   }
   debugLog('all files processed', { totalRows: rows.length });
   setTimeout(() => $('progressWrap').classList.remove('active'), 1200);
+}
+
+async function waitForOcrJob(jobId, fileName) {
+  const pollDelayMs = 1500;
+  const maxWaitMs = 15 * 60 * 1000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    const res = await fetch(`${API}/ocr/status/${encodeURIComponent(jobId)}`);
+    const data = await res.json();
+    debugLog('async job status', data);
+
+    if (!res.ok) {
+      throw new Error(data.error || `상태 조회 실패 ${res.status}`);
+    }
+
+    if (data.status === 'done') {
+      return data;
+    }
+
+    if (data.status === 'failed') {
+      throw new Error(data.error || 'OCR 처리 실패');
+    }
+
+    const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+    const pct = Math.min(90, 12 + Math.floor(elapsedSec / 2));
+    setProgress(pct, fileName, `서버에서 OCR 처리 중... (${data.status || 'queued'})`);
+    await new Promise(resolve => setTimeout(resolve, pollDelayMs));
+  }
+
+  throw new Error('OCR 처리 시간이 너무 오래 걸립니다.');
 }
 
 function setProgress(pct, file, status) {
