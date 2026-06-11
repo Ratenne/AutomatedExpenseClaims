@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>영수증 → 엑셀 변환기</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+KR:wght@400;500;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d0d0d; --surface: #141414; --surface2: #1c1c1c;
+  --border: #2a2a2a; --border2: #333; --text: #e8e6e0; --muted: #666;
+  --accent: #c8f04a; --accent-dim: rgba(200,240,74,0.12);
+  --accent-dim2: rgba(200,240,74,0.05);
+  --danger: #ff4444; --success: #4ade80;
+  --mono: 'IBM Plex Mono', monospace; --sans: 'Noto Sans KR', sans-serif;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+/* ── HEADER ── */
+header {
+  padding: 26px 40px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+  background: linear-gradient(180deg, #111 0%, var(--bg) 100%);
+}
+.header-icon {
+  width: 44px; height: 44px; background: var(--accent); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
+}
+header h1 { font-size: 20px; font-weight: 700; color: #fff; }
+header p  { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+.badge {
+  margin-left: auto; background: var(--accent-dim); border: 1px solid var(--accent);
+  color: var(--accent); font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 4px;
+}
+
+/* ── CONTAINER ── */
+.container { max-width: 1000px; margin: 0 auto; padding: 28px 24px; }
+
+/* ── UPLOAD ── */
+.upload-zone {
+  border: 1.5px dashed var(--border2); border-radius: 12px; padding: 44px 24px;
+  text-align: center; cursor: pointer; transition: all .2s; background: var(--accent-dim2); margin-bottom: 20px;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-dim); }
+.upload-zone input { display: none; }
+.upload-icon { font-size: 42px; margin-bottom: 12px; display: block; }
+.upload-zone h2 { font-size: 15px; font-weight: 600; color: #ddd; }
+.upload-zone p  { font-size: 11px; color: var(--muted); margin-top: 7px; font-family: var(--mono); }
+
+/* ── INFO BOX ── */
+.info-box {
+  background: rgba(200,240,74,0.05); border: 1px solid rgba(200,240,74,0.2);
+  border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #999;
+  font-family: var(--mono); line-height: 1.7; margin-bottom: 20px;
+}
+.info-box strong { color: var(--accent); }
+
+/* ── PROGRESS ── */
+.progress-wrap {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px; margin-bottom: 20px; display: none;
+}
+.progress-wrap.active { display: block; }
+.progress-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--muted); font-family: var(--mono); margin-bottom: 10px;
+}
+.progress-label span:last-child { color: var(--accent); font-weight: 600; }
+.progress-bar-bg { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .25s; width: 0%; }
+.progress-status { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: var(--mono); }
+
+/* ── TABLE ── */
+.table-section { display: none; }
+.table-section.active { display: block; }
+.table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.table-header h3 { font-size: 13px; color: var(--muted); font-weight: 500; }
+.table-header h3 span { color: var(--accent); font-weight: 700; }
+.btn-download {
+  background: var(--accent); color: #000; border: none; border-radius: 6px;
+  padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+  font-family: var(--sans); transition: opacity .15s; display: flex; align-items: center; gap: 6px;
+}
+.btn-download:hover { opacity: .85; }
+.table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead tr { background: var(--surface); }
+thead th {
+  padding: 11px 14px; text-align: left; color: var(--muted);
+  font-weight: 600; font-size: 11px; letter-spacing: .7px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border); font-family: var(--mono); white-space: nowrap;
+}
+thead th.right { text-align: right; }
+tbody tr { transition: background .1s; }
+tbody tr:hover { background: rgba(200,240,74,0.04); }
+tbody td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); vertical-align: middle; }
+tbody td.mono   { font-family: var(--mono); font-size: 12px; }
+tbody td.amount { text-align: right; color: var(--success); font-family: var(--mono); font-weight: 600; }
+tbody td.actions { white-space: nowrap; }
+.edit-input {
+  background: var(--surface2); border: 1px solid var(--accent); color: var(--text);
+  border-radius: 4px; padding: 4px 8px; width: 100%; font-size: 12px; font-family: var(--sans); outline: none;
+}
+tfoot tr { background: var(--surface); }
+tfoot td { padding: 11px 14px; font-size: 13px; border-top: 1px solid var(--border2); }
+tfoot .total-label  { color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .7px; text-transform: uppercase; font-weight: 600; }
+tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(--mono); font-weight: 700; font-size: 15px; }
+
+/* action btns */
+.btn-edit, .btn-save, .btn-cancel, .btn-del {
+  border: none; border-radius: 4px; padding: 4px 9px;
+  font-size: 11px; cursor: pointer; font-family: var(--sans); font-weight: 600; transition: opacity .15s;
+}
+.btn-edit   { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+.btn-edit:hover { color: var(--text); }
+.btn-save   { background: var(--accent); color: #000; margin-right: 4px; }
+.btn-cancel { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); margin-right: 4px; }
+.btn-del    { background: transparent; color: var(--danger); border: 1px solid var(--danger); margin-left: 5px; }
+.btn-del:hover { background: rgba(255,68,68,.1); }
+
+/* ── MANUAL ADD ── */
+.add-row-section {
+  margin-top: 18px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 18px; display: none;
+}
+.add-row-section.active { display: block; }
+.add-row-section h4 { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 10px; letter-spacing: .5px; }
+.add-grid { display: grid; grid-template-columns: 60px 60px 1fr 1fr 110px auto; gap: 8px; align-items: end; }
+.field-group label { display: block; font-size: 10px; color: var(--muted); font-family: var(--mono); margin-bottom: 4px; }
+.field-group input {
+  background: var(--surface2); border: 1px solid var(--border2); color: var(--text);
+  border-radius: 5px; padding: 6px 9px; font-size: 12px; font-family: var(--sans);
+  width: 100%; outline: none; transition: border-color .15s;
+}
+.field-group input:focus { border-color: var(--accent); }
+.btn-add { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--sans); white-space: nowrap; }
+.btn-add:hover { filter: brightness(1.2); }
+.tip { margin-top: 9px; font-size: 11px; color: #383838; text-align: center; font-family: var(--mono); }
+
+/* ── EMPTY ── */
+.empty-state { text-align: center; padding: 60px 0; color: #252525; }
+.empty-state .icon { font-size: 52px; opacity: .3; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* ── RAW TEXT MODAL ── */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 100; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 24px; max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal h3 { font-size: 14px; color: var(--accent); margin-bottom: 12px; font-family: var(--mono); }
+.modal pre { font-size: 12px; font-family: var(--mono); color: #aaa; white-space: pre-wrap; line-height: 1.6; }
+.modal-close { margin-top: 16px; background: var(--surface2); border: 1px solid var(--border2); color: var(--muted); border-radius: 6px; padding: 7px 16px; cursor: pointer; font-family: var(--sans); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-icon">🧾</div>
+  <div>
+    <h1>영수증 → 엑셀 변환기</h1>
+    <p>tesseract kor_best · 로컬 처리 · 완전 무료</p>
+  </div>
+  <div class="badge">FREE / LOCAL</div>
+</header>
+
+<div class="container">
+
+  <div class="info-box">
+    <strong>결제 시간 자동 분류</strong> — 06~10시 → 조식 &nbsp;·&nbsp; 11~15시 → 중식 &nbsp;·&nbsp; 16~23시 → 석식<br>
+    인식이 틀린 항목은 <strong>✏ 수정</strong>으로 직접 고치거나, 하단 <strong>수동 추가</strong>를 이용하세요.
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept="image/*" multiple>
+    <span class="upload-icon">📷</span>
+    <h2>영수증 이미지를 드래그하거나 클릭하여 업로드</h2>
+    <p>JPG · PNG · WEBP 지원 &nbsp;·&nbsp; 여러 장 동시 업로드 가능</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-label">
+      <span id="progressFile">처리 중...</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar"></div></div>
+    <div class="progress-status" id="progressStatus">OCR 서버로 전송 중...</div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-section" id="tableSection">
+    <div class="table-header">
+      <h3>인식된 항목 <span id="rowCount">0</span>건</h3>
+      <button class="btn-download" onclick="downloadCSV()">📥 Excel(CSV) 다운로드</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>월</th><th>일</th><th>거래처명</th><th>지출내용</th>
+            <th class="right">금액 (원)</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="total-label">합계</td>
+            <td class="total-amount" id="totalAmount">0 원</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="tip">CSV 파일은 Excel에서 바로 열 수 있습니다 &nbsp;·&nbsp; 인코딩: UTF-8 BOM</p>
+  </div>
+
+  <!-- Manual Add -->
+  <div class="add-row-section" id="addRowSection">
+    <h4>+ 수동 항목 추가</h4>
+    <div class="add-grid">
+      <div class="field-group"><label>월</label><input type="number" id="inM" placeholder="6" min="1" max="12"></div>
+      <div class="field-group"><label>일</label><input type="number" id="inD" placeholder="10" min="1" max="31"></div>
+      <div class="field-group"><label>거래처명</label><input type="text" id="inV" placeholder="GS25 부산역점"></div>
+      <div class="field-group"><label>지출내용</label><input type="text" id="inDesc" placeholder="조식"></div>
+      <div class="field-group"><label>금액 (원)</label><input type="number" id="inA" placeholder="3500"></div>
+      <button class="btn-add" onclick="addManualRow()">+ 추가</button>
+    </div>
+  </div>
+
+  <!-- Empty -->
+  <div class="empty-state" id="emptyState">
+    <div class="icon">📊</div>
+    <p>업로드된 영수증이 없습니다</p>
+  </div>
+
+</div>
+
+<!-- Raw text modal -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>OCR 원문 텍스트</h3>
+    <pre id="modalText"></pre>
+    <button class="modal-close" onclick="closeModal()">닫기</button>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5000';
+let rows = [], nextId = 1, editingId = null;
+
+const $ = id => document.getElementById(id);
+
+// ── Upload ──
+$('uploadZone').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', e => { processFiles([...(e.target.files)]); e.target.value = ''; });
+$('uploadZone').addEventListener('dragover',  e => { e.preventDefault(); $('uploadZone').classList.add('drag'); });
+$('uploadZone').addEventListener('dragleave', () => $('uploadZone').classList.remove('drag'));
+$('uploadZone').addEventListener('drop', e => {
+  e.preventDefault(); $('uploadZone').classList.remove('drag');
+  processFiles([...e.dataTransfer.files]);
+});
+
+async function processFiles(files) {
+  const imgs = files.filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  $('progressWrap').classList.add('active');
+  $('emptyState').style.display = 'none';
+
+  for (let i = 0; i < imgs.length; i++) {
+    const file = imgs[i];
+    setProgress(0, `${i+1}/${imgs.length} — ${file.name}`, 'Flask 서버로 전송 중...');
+
+    const fd = new FormData();
+    fd.append('image', file);
+
+    try {
+      // fake progress during fetch
+      let fakePct = 10;
+      const ticker = setInterval(() => {
+        fakePct = Math.min(fakePct + 8, 85);
+        setProgress(fakePct, null, 'OCR 처리 중 (kor_best 모델)...');
+      }, 300);
+
+      const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
+      clearInterval(ticker);
+
+      if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      setProgress(100, null, '완료 ✓');
+      rows.push({ ...data, id: nextId++ });
+      renderTable();
+    } catch (err) {
+      setProgress(0, null, `오류: ${err.message}`);
+      console.error(err);
+    }
+  }
+  setTimeout(() => $('progressWrap').classList.remove('active'), 1200);
+}
+
+function setProgress(pct, file, status) {
+  $('progressBar').style.width = pct + '%';
+  $('progressPct').textContent = pct + '%';
+  if (file)   $('progressFile').textContent = file;
+  if (status) $('progressStatus').textContent = status;
+}
+
+// ── Table ──
+function renderTable() {
+  const has = rows.length > 0;
+  $('tableSection').classList.toggle('active', has);
+  $('addRowSection').classList.toggle('active', has);
+  $('emptyState').style.display = has ? 'none' : 'block';
+  $('rowCount').textContent = rows.length;
+
+  const total = rows.reduce((s, r) => s + (parseInt(r.amount) || 0), 0);
+  $('totalAmount').textContent = total.toLocaleString('ko-KR') + ' 원';
+
+  $('tableBody').innerHTML = rows.map(row => {
+    if (editingId === row.id) {
+      return `<tr>
+        <td><input class="edit-input" id="em_${row.id}" value="${esc(row.month)}" style="width:44px"></td>
+        <td><input class="edit-input" id="ed_${row.id}" value="${esc(row.day)}"   style="width:44px"></td>
+        <td><input class="edit-input" id="ev_${row.id}" value="${esc(row.vendor)}"></td>
+        <td><input class="edit-input" id="ec_${row.id}" value="${esc(row.description)}"></td>
+        <td><input class="edit-input" id="ea_${row.id}" value="${esc(row.amount)}" style="text-align:right"></td>
+        <td class="actions">
+          <button class="btn-save"   onclick="saveEdit(${row.id})">저장</button>
+          <button class="btn-cancel" onclick="cancelEdit()">취소</button>
+        </td>
+      </tr>`;
+    }
+    const hasRaw = row.raw_text && row.raw_text.trim();
+    return `<tr>
+      <td class="mono">${esc(row.month)}</td>
+      <td class="mono">${esc(row.day)}</td>
+      <td><strong>${esc(row.vendor)}</strong></td>
+      <td style="color:#999">${esc(row.description)}</td>
+      <td class="amount">${parseInt(row.amount||0).toLocaleString('ko-KR')}</td>
+      <td class="actions">
+        ${hasRaw ? `<button class="btn-edit" onclick="showRaw(${row.id})" style="margin-right:4px">📄</button>` : ''}
+        <button class="btn-edit" onclick="startEdit(${row.id})">✏</button>
+        <button class="btn-del"  onclick="deleteRow(${row.id})">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function startEdit(id) { editingId = id; renderTable(); }
+function cancelEdit()  { editingId = null; renderTable(); }
+function deleteRow(id) { rows = rows.filter(r => r.id !== id); renderTable(); }
+function saveEdit(id) {
+  const r = rows.find(r => r.id === id);
+  if (!r) return;
+  r.month       = $(`em_${id}`).value;
+  r.day         = $(`ed_${id}`).value;
+  r.vendor      = $(`ev_${id}`).value;
+  r.description = $(`ec_${id}`).value;
+  r.amount      = $(`ea_${id}`).value.replace(/,/g,'');
+  editingId = null;
+  renderTable();
+}
+
+function showRaw(id) {
+  const r = rows.find(r => r.id === id);
+  if (!r) return;
+  $('modalText').textContent = r.raw_text || '(없음)';
+  $('modalBg').classList.add('open');
+}
+function closeModal() { $('modalBg').classList.remove('open'); }
+$('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) closeModal(); });
+
+function addManualRow() {
+  const v = $('inV').value.trim(), a = $('inA').value.trim();
+  if (!v && !a) { alert('거래처명 또는 금액을 입력하세요.'); return; }
+  rows.push({ id: nextId++, month: $('inM').value.trim(), day: $('inD').value.trim(),
+              vendor: v || '-', description: $('inDesc').value.trim() || '-',
+              amount: a || '0', raw_text: '' });
+  ['inM','inD','inV','inDesc','inA'].forEach(id => $(id).value = '');
+  renderTable();
+}
+
+// ── CSV ──
+function downloadCSV() {
+  if (!rows.length) return;
+  const headers = ['월','일','거래처명','지출내용','금액 (원)'];
+  const csv = [
+    headers.join(','),
+    ...rows.map(r =>
+      [r.month, r.day, `"${(r.vendor||'').replace(/"/g,'""')}"`,
+       `"${(r.description||'').replace(/"/g,'""')}"`, r.amount].join(',')
+    )
+  ].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = '영수증_지출내역.csv'; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+renderTable();
+</script>
+</body>
+</html>
