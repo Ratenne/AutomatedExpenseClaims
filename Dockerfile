@@ -20,8 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 5. 프로젝트 소스 코드 복사
 COPY . .
 
-# 6. 포트 설정 (Render는 기본적으로 10000 포트를 많이 씁니다)
-EXPOSE 10000
+# 6. 허깅페이스 전용 포트 설정 (7860으로 고정)
+EXPOSE 7860
 
-# 7. 서버 실행 명령어 (app.py 내부에서 host='0.0.0.0', port=10000으로 구동되게 설정 필요)
+# 7. 서버 실행 명령어 (포트를 7860으로 강제 주입)
 CMD ["python", "app.py"]

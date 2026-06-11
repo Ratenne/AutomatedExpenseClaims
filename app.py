@@ -640,8 +640,5 @@ def ocr_status(job_id):
 
 
 if __name__ == '__main__':
-    # Render 환경변수에 PORT가 있으면 쓰고, 없으면 10000번을 기본값으로 사용
-    port = int(os.environ.get('PORT', 10000))
-    
-    # host를 '0.0.0.0'으로 해야 외부에서 접속이 가능합니다!
+    port = int(os.environ.get('PORT', 7860)) # 기본값을 7860으로 설정
     app.run(host='0.0.0.0', port=port, debug=True)

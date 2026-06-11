@@ -152,7 +152,7 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
 .modal-close { margin-top: 16px; background: var(--surface2); border: 1px solid var(--border2); color: var(--muted); border-radius: 6px; padding: 7px 16px; cursor: pointer; font-family: var(--sans); font-size: 12px; }
 </style>
 </head>
-<body>
+<body data-ocr-async="{{ '1' if is_render else '0' }}">
 
 <header>
   <div class="header-icon">🧾</div>
@@ -247,7 +247,7 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
 
 <script>
 const API = window.location.origin;
-const OCR_ASYNC = {{ 'true' if is_render else 'false' }};
+const OCR_ASYNC = document.body.dataset.ocrAsync === '1';
 let rows = [], nextId = 1, editingId = null;
 
 const $ = id => document.getElementById(id);
