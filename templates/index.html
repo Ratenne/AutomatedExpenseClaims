@@ -246,7 +246,7 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
 </div>
 
 <script>
-const API = 'http://localhost:5000';
+const API = window.location.origin;
 let rows = [], nextId = 1, editingId = null;
 
 const $ = id => document.getElementById(id);
