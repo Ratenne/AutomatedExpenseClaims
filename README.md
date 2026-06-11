@@ -1,3 +1,5 @@
+https://automatedexpenseclaims.onrender.com/
+
 # 영수증 → 엑셀 변환기
 
 Tesseract `kor_best` 모델 기반 영수증 OCR → CSV 변환 도구.  
