@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 import cv2
 import numpy as np
 import pytesseract
@@ -10,6 +11,7 @@ from flask_cors import CORS
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+app.logger.setLevel(logging.INFO)
 
 # 프로젝트 루트의 tessdata를 우선 사용한다.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -106,6 +108,7 @@ def _reocr_vendor_crop(raw_gray: np.ndarray, sharp: np.ndarray) -> list:
         # text 컬럼을 string 타입으로 변환 (NaN 값은 빈 문자열로)
         data['text'] = data['text'].fillna('').astype(str)
     except Exception:
+        app.logger.exception('[OCR] vendor crop re-ocr failed')
         return []
 
     candidates = []
@@ -447,14 +450,26 @@ def ocr():
     if 'image' not in request.files:
         return jsonify({'error': '이미지가 없습니다'}), 400
 
-    img_bytes = request.files['image'].read()
+    image_file = request.files['image']
+    filename = image_file.filename or 'unknown'
+    content_type = image_file.content_type or 'unknown'
+    img_bytes = image_file.read()
+    app.logger.info(
+        '[OCR] request received filename=%s content_type=%s size=%d',
+        filename,
+        content_type,
+        len(img_bytes),
+    )
+
     try:
         raw_gray, sharp = preprocess(img_bytes)
         text            = run_ocr(raw_gray, sharp)
         crop_candidates = _reocr_vendor_crop(raw_gray, sharp)
         result          = parse_receipt(text, crop_candidates)
+        app.logger.info('[OCR] success filename=%s parsed_amount=%s', filename, result.get('amount'))
         return jsonify(result)
     except Exception as e:
+        app.logger.exception('[OCR] failed filename=%s error=%s', filename, str(e))
         return jsonify({'error': str(e)}), 500
 
 

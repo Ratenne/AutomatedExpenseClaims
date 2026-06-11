@@ -251,6 +251,15 @@ let rows = [], nextId = 1, editingId = null;
 
 const $ = id => document.getElementById(id);
 
+function debugLog(stage, payload) {
+  const ts = new Date().toISOString();
+  if (payload === undefined) {
+    console.log(`[OCR][${ts}] ${stage}`);
+    return;
+  }
+  console.log(`[OCR][${ts}] ${stage}`, payload);
+}
+
 // ── Upload ──
 $('uploadZone').addEventListener('click', () => $('fileInput').click());
 $('fileInput').addEventListener('change', e => { processFiles([...(e.target.files)]); e.target.value = ''; });
@@ -262,42 +271,87 @@ $('uploadZone').addEventListener('drop', e => {
 });
 
 async function processFiles(files) {
+  debugLog('processFiles() called', { totalFiles: files.length });
   const imgs = files.filter(f => f.type.startsWith('image/'));
+  debugLog('image files filtered', {
+    imageCount: imgs.length,
+    files: imgs.map(f => ({ name: f.name, type: f.type, size: f.size }))
+  });
   if (!imgs.length) return;
   $('progressWrap').classList.add('active');
   $('emptyState').style.display = 'none';
 
   for (let i = 0; i < imgs.length; i++) {
     const file = imgs[i];
+    debugLog('start file upload', {
+      index: i + 1,
+      total: imgs.length,
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
     setProgress(0, `${i+1}/${imgs.length} — ${file.name}`, 'Flask 서버로 전송 중...');
 
     const fd = new FormData();
     fd.append('image', file);
+    debugLog('formdata prepared', { hasImage: fd.has('image') });
+
+    let ticker = null;
+    let stalledTimer = null;
 
     try {
       // fake progress during fetch
       let fakePct = 10;
-      const ticker = setInterval(() => {
+      ticker = setInterval(() => {
         fakePct = Math.min(fakePct + 8, 85);
         setProgress(fakePct, null, 'OCR 처리 중 (kor_best 모델)...');
       }, 300);
+      debugLog('fetch started', { url: `${API}/ocr`, method: 'POST' });
+
+      stalledTimer = setTimeout(() => {
+        debugLog('fetch still pending (>10s)', {
+          file: file.name,
+          progress: $('progressPct').textContent,
+          status: $('progressStatus').textContent
+        });
+      }, 10000);
 
       const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
-      console.log('서버 응답:', res);
-      clearInterval(ticker);
+      debugLog('response received', {
+        ok: res.ok,
+        status: res.status,
+        statusText: res.statusText,
+        url: res.url
+      });
 
-      if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        debugLog('response body (error)', errText);
+        throw new Error(`서버 오류 ${res.status}`);
+      }
+
       const data = await res.json();
+      debugLog('response body (json)', data);
       if (data.error) throw new Error(data.error);
 
       setProgress(100, null, '완료 ✓');
       rows.push({ ...data, id: nextId++ });
+      debugLog('row added', { rowId: nextId - 1, totalRows: rows.length });
       renderTable();
     } catch (err) {
       setProgress(0, null, `오류: ${err.message}`);
-      console.error(err);
+      debugLog('request failed', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack
+      });
+    } finally {
+      if (ticker) clearInterval(ticker);
+      if (stalledTimer) clearTimeout(stalledTimer);
+      debugLog('request finished', { file: file.name });
     }
   }
+  debugLog('all files processed', { totalRows: rows.length });
   setTimeout(() => $('progressWrap').classList.remove('active'), 1200);
 }
 
