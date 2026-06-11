@@ -13,7 +13,9 @@ WORKDIR /app
 
 # 4. 파이썬 라이브러리 설치 (가상환경 대신 서버 자체에 설치)
 # 만약 requirements.txt가 아직 없다면 pip install flask pytesseract 등 직접 명시해도 됩니다.
-RUN pip install --no-cache-dir flask pytesseract Pillow
+# RUN pip install --no-cache-dir flask pytesseract Pillow
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. 프로젝트 소스 코드 복사
 COPY . .
