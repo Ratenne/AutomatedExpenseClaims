@@ -13,6 +13,14 @@ app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 app.logger.setLevel(logging.INFO)
 
+# 배포(Render)에서만 빠른 OCR 모드를 기본 활성화한다.
+IS_RENDER = (
+    os.environ.get('RENDER', '').lower() == 'true'
+    or bool(os.environ.get('RENDER_SERVICE_ID'))
+)
+OCR_FAST_MODE = os.environ.get('OCR_FAST_MODE', '1' if IS_RENDER else '0') == '1'
+OCR_TIMEOUT_SEC = int(os.environ.get('OCR_TIMEOUT_SEC', '12'))
+
 # 프로젝트 루트의 tessdata를 우선 사용한다.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TESSDATA_DIR = os.path.join(BASE_DIR, 'tessdata')
@@ -69,9 +77,11 @@ def preprocess(img_bytes: bytes):
     if img is None:
         raise ValueError("이미지 디코딩 실패")
 
-    # 1) 2배 업스케일 (최대 4000px 제한)
+    # 1) 2배 업스케일 (배포 빠른 모드에서는 축소 상한을 낮춰 처리시간 절감)
     h, w = img.shape[:2]
-    scale = min(2.0, 4000 / max(h, w))
+    max_edge = 2600 if OCR_FAST_MODE else 4000
+    max_upscale = 1.5 if OCR_FAST_MODE else 2.0
+    scale = min(max_upscale, max_edge / max(h, w))
     img = cv2.resize(img, (int(w * scale), int(h * scale)),
                      interpolation=cv2.INTER_CUBIC)
 
@@ -97,6 +107,9 @@ def preprocess(img_bytes: bytes):
 # ──────────────────────────────────────────
 def _reocr_vendor_crop(raw_gray: np.ndarray, sharp: np.ndarray) -> list:
     """vendor 키워드 라인의 값 영역을 3x+PSM7로 재OCR, 후보 리스트 반환"""
+    if OCR_FAST_MODE:
+        return []
+
     vendor_keys = ['적요', '입금처', '가맹점', '상호', '점명']
     h, w = raw_gray.shape
 
@@ -163,9 +176,21 @@ def _reocr_vendor_crop(raw_gray: np.ndarray, sharp: np.ndarray) -> list:
 #  멀티패스 OCR
 # ──────────────────────────────────────────
 def run_ocr(raw_gray: np.ndarray, sharp: np.ndarray) -> str:
-    t4  = pytesseract.image_to_string(sharp, lang=TESS_LANG, config=_cfg(4))
-    t6  = pytesseract.image_to_string(sharp, lang=TESS_LANG, config=_cfg(6))
-    t11 = pytesseract.image_to_string(sharp, lang=TESS_LANG, config=_cfg(11))
+    def _ocr_once(psm: int) -> str:
+        kwargs = {
+            'lang': TESS_LANG,
+            'config': _cfg(psm),
+        }
+        if OCR_FAST_MODE:
+            kwargs['timeout'] = OCR_TIMEOUT_SEC
+        return pytesseract.image_to_string(sharp, **kwargs)
+
+    if OCR_FAST_MODE:
+        return _ocr_once(6)
+
+    t4  = _ocr_once(4)
+    t6  = _ocr_once(6)
+    t11 = _ocr_once(11)
     return t4 + '\n' + t6 + '\n' + t11
 
 
