@@ -283,6 +283,7 @@ async function processFiles(files) {
       }, 300);
 
       const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
+      console.log('서버 응답:', res);
       clearInterval(ticker);
 
       if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
