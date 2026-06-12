@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+CACHEDIR.TAG
+tessdata/**
+!tessdata/kor.traineddata
+!tessdata/kor_best.traineddata
+!tessdata/eng_best.traineddata
+!tessdata/eng.traineddata
+!tessdata/osd.traineddata
