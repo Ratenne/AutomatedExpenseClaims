@@ -12,7 +12,7 @@
   --border: #2a2a2a; --border2: #333; --text: #e8e6e0; --muted: #666;
   --accent: #c8f04a; --accent-dim: rgba(200,240,74,0.12);
   --accent-dim2: rgba(200,240,74,0.05);
-  --danger: #ff4444; --success: #4ade80;
+  --danger: #ff4444; --success: #4ade80; --warn: #f59e0b;
   --mono: 'IBM Plex Mono', monospace; --sans: 'Noto Sans KR', sans-serif;
 }
 body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
@@ -29,18 +29,28 @@ header {
 }
 header h1 { font-size: 20px; font-weight: 700; color: #fff; }
 header p  { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .badge {
-  margin-left: auto; background: var(--accent-dim); border: 1px solid var(--accent);
-  color: var(--accent); font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 4px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  color: var(--accent); font-family: var(--mono); font-size: 11px;
+  padding: 4px 10px; border-radius: 4px;
 }
+.btn-dict {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--muted); font-family: var(--mono); font-size: 11px;
+  padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  transition: all .15s;
+}
+.btn-dict:hover { color: var(--text); border-color: var(--accent); }
 
 /* ── CONTAINER ── */
-.container { max-width: 1000px; margin: 0 auto; padding: 28px 24px; }
+.container { max-width: 1060px; margin: 0 auto; padding: 28px 24px; }
 
 /* ── UPLOAD ── */
 .upload-zone {
   border: 1.5px dashed var(--border2); border-radius: 12px; padding: 44px 24px;
-  text-align: center; cursor: pointer; transition: all .2s; background: var(--accent-dim2); margin-bottom: 20px;
+  text-align: center; cursor: pointer; transition: all .2s;
+  background: var(--accent-dim2); margin-bottom: 20px;
 }
 .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-dim); }
 .upload-zone input { display: none; }
@@ -94,13 +104,17 @@ thead th {
 thead th.right { text-align: right; }
 tbody tr { transition: background .1s; }
 tbody tr:hover { background: rgba(200,240,74,0.04); }
-tbody td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); vertical-align: middle; }
+tbody td {
+  padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--text); vertical-align: middle;
+}
 tbody td.mono   { font-family: var(--mono); font-size: 12px; }
 tbody td.amount { text-align: right; color: var(--success); font-family: var(--mono); font-weight: 600; }
 tbody td.actions { white-space: nowrap; }
 .edit-input {
   background: var(--surface2); border: 1px solid var(--accent); color: var(--text);
-  border-radius: 4px; padding: 4px 8px; width: 100%; font-size: 12px; font-family: var(--sans); outline: none;
+  border-radius: 4px; padding: 4px 8px; width: 100%;
+  font-size: 12px; font-family: var(--sans); outline: none;
 }
 tfoot tr { background: var(--surface); }
 tfoot td { padding: 11px 14px; font-size: 13px; border-top: 1px solid var(--border2); }
@@ -134,7 +148,11 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
   width: 100%; outline: none; transition: border-color .15s;
 }
 .field-group input:focus { border-color: var(--accent); }
-.btn-add { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--sans); white-space: nowrap; }
+.btn-add {
+  background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: 700;
+  cursor: pointer; font-family: var(--sans); white-space: nowrap;
+}
 .btn-add:hover { filter: brightness(1.2); }
 .tip { margin-top: 9px; font-size: 11px; color: #383838; text-align: center; font-family: var(--mono); }
 
@@ -144,15 +162,120 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
 .empty-state p { font-size: 14px; }
 
 /* ── RAW TEXT MODAL ── */
-.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 100; align-items: center; justify-content: center; }
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.8); z-index: 100;
+  align-items: center; justify-content: center;
+}
 .modal-bg.open { display: flex; }
-.modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 24px; max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 12px; padding: 24px; max-width: 580px; width: 90%;
+  max-height: 82vh; overflow-y: auto;
+}
 .modal h3 { font-size: 14px; color: var(--accent); margin-bottom: 12px; font-family: var(--mono); }
 .modal pre { font-size: 12px; font-family: var(--mono); color: #aaa; white-space: pre-wrap; line-height: 1.6; }
-.modal-close { margin-top: 16px; background: var(--surface2); border: 1px solid var(--border2); color: var(--muted); border-radius: 6px; padding: 7px 16px; cursor: pointer; font-family: var(--sans); font-size: 12px; }
+.modal-close {
+  margin-top: 16px; background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--muted); border-radius: 6px; padding: 7px 16px;
+  cursor: pointer; font-family: var(--sans); font-size: 12px;
+}
+
+/* ── 보정 사전 패널 ── */
+.dict-panel {
+  display: none; position: fixed; top: 0; right: 0; bottom: 0;
+  width: 420px; background: var(--surface); border-left: 1px solid var(--border2);
+  z-index: 200; flex-direction: column; overflow: hidden;
+}
+.dict-panel.open { display: flex; }
+.dict-header {
+  padding: 20px 20px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.dict-header h2 { font-size: 15px; font-weight: 700; color: var(--accent); }
+.dict-header p  { font-size: 11px; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
+.dict-close {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 20px; line-height: 1; padding: 4px; transition: color .15s;
+}
+.dict-close:hover { color: var(--text); }
+.dict-search {
+  padding: 12px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.dict-search input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); border-radius: 6px; padding: 7px 12px;
+  font-size: 12px; font-family: var(--mono); outline: none;
+  transition: border-color .15s;
+}
+.dict-search input:focus { border-color: var(--accent); }
+.dict-body { flex: 1; overflow-y: auto; padding: 12px 20px; }
+.dict-cat-label {
+  font-size: 10px; font-family: var(--mono); color: var(--muted);
+  letter-spacing: .8px; text-transform: uppercase;
+  padding: 10px 0 6px; border-top: 1px solid var(--border);
+  margin-top: 10px;
+}
+.dict-cat-label:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+.dict-entry {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+  transition: border-color .15s;
+}
+.dict-entry:hover { border-color: var(--border2); }
+.dict-entry-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
+}
+.dict-correct {
+  font-size: 13px; font-weight: 700; color: var(--accent); font-family: var(--mono);
+}
+.dict-entry-actions { display: flex; gap: 6px; }
+.btn-dict-del {
+  background: none; border: 1px solid #333; color: #555;
+  border-radius: 4px; padding: 2px 7px; font-size: 10px;
+  cursor: pointer; font-family: var(--mono); transition: all .15s;
+}
+.btn-dict-del:hover { border-color: var(--danger); color: var(--danger); }
+.dict-variants { display: flex; flex-wrap: wrap; gap: 4px; }
+.dict-variant {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 3px; padding: 2px 7px; font-size: 11px;
+  color: #888; font-family: var(--mono);
+}
+.dict-variant.is-same { color: #444; }
+.dict-empty { color: #333; font-size: 12px; font-family: var(--mono); text-align: center; padding: 32px 0; }
+.dict-footer {
+  padding: 12px 20px; border-top: 1px solid var(--border);
+  font-size: 11px; color: #444; font-family: var(--mono);
+  flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;
+}
+.dict-count { color: var(--muted); }
+.dict-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.4); z-index: 199;
+}
+.dict-overlay.open { display: block; }
+
+/* ── TOAST ── */
+.toast-wrap {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); border-radius: 8px; padding: 10px 18px;
+  font-size: 12px; font-family: var(--mono);
+  opacity: 0; transform: translateY(10px);
+  transition: opacity .25s, transform .25s;
+  pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.learned { border-color: var(--accent); color: var(--accent); }
+.toast.warn    { border-color: var(--warn);   color: var(--warn); }
 </style>
 </head>
-<body data-ocr-async="{{ '1' if is_render else '0' }}">
+<body>
 
 <header>
   <div class="header-icon">🧾</div>
@@ -160,14 +283,44 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
     <h1>영수증 → 엑셀 변환기</h1>
     <p>tesseract kor_best · 로컬 처리 · 완전 무료</p>
   </div>
-  <div class="badge">FREE / LOCAL</div>
+  <div class="header-right">
+    <button class="btn-dict" onclick="openDict()">📖 보정 사전</button>
+    <div class="badge">FREE / LOCAL</div>
+  </div>
 </header>
+
+<!-- 보정 사전 오버레이 -->
+<div class="dict-overlay" id="dictOverlay" onclick="closeDict()"></div>
+
+<!-- 보정 사전 패널 -->
+<div class="dict-panel" id="dictPanel">
+  <div class="dict-header">
+    <div>
+      <h2>📖 오타 보정 사전</h2>
+      <p>수정 저장 시 자동 학습 · OCR 후 자동 적용</p>
+    </div>
+    <button class="dict-close" onclick="closeDict()">✕</button>
+  </div>
+  <div class="dict-search">
+    <input type="text" id="dictSearch" placeholder="검색 (정답어 / 오타)..." oninput="renderDict()">
+  </div>
+  <div class="dict-body" id="dictBody">
+    <div class="dict-empty">불러오는 중...</div>
+  </div>
+  <div class="dict-footer">
+    <span class="dict-count" id="dictCount">— 항목</span>
+    <span style="color:#333">수정 저장 시 자동 추가됩니다</span>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-wrap" id="toastWrap"></div>
 
 <div class="container">
 
   <div class="info-box">
     <strong>결제 시간 자동 분류</strong> — 06~10시 → 조식 &nbsp;·&nbsp; 11~15시 → 중식 &nbsp;·&nbsp; 16~23시 → 석식<br>
-    인식이 틀린 항목은 <strong>✏ 수정</strong>으로 직접 고치거나, 하단 <strong>수동 추가</strong>를 이용하세요.
+    인식이 틀린 항목은 <strong>✏ 수정</strong> 후 저장하면 <strong>보정 사전</strong>에 자동 학습됩니다.
   </div>
 
   <!-- Upload -->
@@ -192,7 +345,7 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
   <div class="table-section" id="tableSection">
     <div class="table-header">
       <h3>인식된 항목 <span id="rowCount">0</span>건</h3>
-      <button class="btn-download" onclick="downloadCSV()">📥 Excel(CSV) 다운로드</button>
+      <button class="btn-download" onclick="downloadCSV()">📥 Excel(xlsx) 다운로드</button>
     </div>
     <div class="table-wrap">
       <table>
@@ -246,20 +399,40 @@ tfoot .total-amount { text-align: right; color: var(--accent); font-family: var(
 </div>
 
 <script>
+
 const API = window.location.origin;
 const OCR_ASYNC = document.body.dataset.ocrAsync === '1';
 let rows = [], nextId = 1, editingId = null;
+let dictData = [];   // 사전 항목 캐시
+let imageOrder = [];   // 업로드 순서 (시간순) image_id 배열
 
 const $ = id => document.getElementById(id);
 
-function debugLog(stage, payload) {
-  const ts = new Date().toISOString();
-  if (payload === undefined) {
-    console.log(`[OCR][${ts}] ${stage}`);
-    return;
-  }
-  console.log(`[OCR][${ts}] ${stage}`, payload);
+function timeSortKey(value) {
+  if (!value) return 9999;
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return 9999;
+  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
 }
+
+function receiptSortKey(row) {
+  const month = parseInt(row.month, 10) || 0;
+  const day = parseInt(row.day, 10) || 0;
+  const time = timeSortKey(row.payment_time);
+  return [month, day, time, row.id || 0];
+}
+
+function sortRowsByPaymentTime() {
+  rows.sort((a, b) => {
+    const ak = receiptSortKey(a);
+    const bk = receiptSortKey(b);
+    for (let i = 0; i < ak.length; i++) {
+      if (ak[i] !== bk[i]) return ak[i] - bk[i];
+    }
+    return 0;
+  });
+}
+
 
 // ── Upload ──
 $('uploadZone').addEventListener('click', () => $('fileInput').click());
@@ -272,147 +445,38 @@ $('uploadZone').addEventListener('drop', e => {
 });
 
 async function processFiles(files) {
-  debugLog('processFiles() called', { totalFiles: files.length });
   const imgs = files.filter(f => f.type.startsWith('image/'));
-  debugLog('image files filtered', {
-    imageCount: imgs.length,
-    files: imgs.map(f => ({ name: f.name, type: f.type, size: f.size }))
-  });
   if (!imgs.length) return;
   $('progressWrap').classList.add('active');
   $('emptyState').style.display = 'none';
 
   for (let i = 0; i < imgs.length; i++) {
     const file = imgs[i];
-    debugLog('start file upload', {
-      index: i + 1,
-      total: imgs.length,
-      name: file.name,
-      size: file.size,
-      type: file.type
-    });
     setProgress(0, `${i+1}/${imgs.length} — ${file.name}`, 'Flask 서버로 전송 중...');
-
     const fd = new FormData();
     fd.append('image', file);
-    debugLog('formdata prepared', { hasImage: fd.has('image') });
-
-    let ticker = null;
-    let stalledTimer = null;
-
     try {
-      if (OCR_ASYNC) {
-        setProgress(8, `${i+1}/${imgs.length} — ${file.name}`, 'OCR 작업을 서버에 등록하는 중...');
-        debugLog('async submit started', { url: `${API}/ocr`, method: 'POST' });
-
-        const submitRes = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
-        debugLog('async submit response received', {
-          ok: submitRes.ok,
-          status: submitRes.status,
-          statusText: submitRes.statusText,
-          url: submitRes.url
-        });
-
-        const submitData = await submitRes.json();
-        debugLog('async submit response body', submitData);
-        if (!submitRes.ok && submitRes.status !== 202) {
-          throw new Error(submitData.error || `서버 오류 ${submitRes.status}`);
-        }
-        if (!submitData.job_id) {
-          throw new Error('비동기 OCR 작업 ID를 받지 못했습니다.');
-        }
-
-        const data = await waitForOcrJob(submitData.job_id, file.name);
-        setProgress(100, null, '완료 ✓');
-        rows.push({ ...data, id: nextId++ });
-        debugLog('row added', { rowId: nextId - 1, totalRows: rows.length });
-        renderTable();
-      } else {
-        // fake progress during fetch
-        let fakePct = 10;
-        ticker = setInterval(() => {
-          fakePct = Math.min(fakePct + 8, 85);
-          setProgress(fakePct, null, 'OCR 처리 중 (kor_best 모델)...');
-        }, 300);
-        debugLog('fetch started', { url: `${API}/ocr`, method: 'POST' });
-
-        stalledTimer = setTimeout(() => {
-          debugLog('fetch still pending (>10s)', {
-            file: file.name,
-            progress: $('progressPct').textContent,
-            status: $('progressStatus').textContent
-          });
-        }, 10000);
-
-        const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
-        debugLog('response received', {
-          ok: res.ok,
-          status: res.status,
-          statusText: res.statusText,
-          url: res.url
-        });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          debugLog('response body (error)', errText);
-          throw new Error(`서버 오류 ${res.status}`);
-        }
-
-        const data = await res.json();
-        debugLog('response body (json)', data);
-        if (data.error) throw new Error(data.error);
-
-        setProgress(100, null, '완료 ✓');
-        rows.push({ ...data, id: nextId++ });
-        debugLog('row added', { rowId: nextId - 1, totalRows: rows.length });
-        renderTable();
-      }
+      let fakePct = 10;
+      const ticker = setInterval(() => {
+        fakePct = Math.min(fakePct + 8, 85);
+        setProgress(fakePct, null, 'OCR 처리 중 (kor_best 모델)...');
+      }, 300);
+      const res = await fetch(`${API}/ocr`, { method: 'POST', body: fd });
+      clearInterval(ticker);
+      if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setProgress(100, null, '완료 ✓');
+      if (data.image_id) imageOrder.push(data.image_id);
+      rows.push({ ...data, id: nextId++, _ocr: { vendor: data.vendor, description: data.description } });
+      sortRowsByPaymentTime();
+      renderTable();
     } catch (err) {
       setProgress(0, null, `오류: ${err.message}`);
-      debugLog('request failed', {
-        message: err.message,
-        name: err.name,
-        stack: err.stack
-      });
-    } finally {
-      if (ticker) clearInterval(ticker);
-      if (stalledTimer) clearTimeout(stalledTimer);
-      debugLog('request finished', { file: file.name });
+      showToast('오류: ' + err.message, 'warn');
     }
   }
-  debugLog('all files processed', { totalRows: rows.length });
   setTimeout(() => $('progressWrap').classList.remove('active'), 1200);
-}
-
-async function waitForOcrJob(jobId, fileName) {
-  const pollDelayMs = 1500;
-  const maxWaitMs = 15 * 60 * 1000;
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < maxWaitMs) {
-    const res = await fetch(`${API}/ocr/status/${encodeURIComponent(jobId)}`);
-    const data = await res.json();
-    debugLog('async job status', data);
-
-    if (!res.ok) {
-      throw new Error(data.error || `상태 조회 실패 ${res.status}`);
-    }
-
-    if (data.status === 'done') {
-      return data;
-    }
-
-    if (data.status === 'failed') {
-      throw new Error(data.error || 'OCR 처리 실패');
-    }
-
-    const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-    const pct = Math.min(90, 12 + Math.floor(elapsedSec / 2));
-    setProgress(pct, fileName, `서버에서 OCR 처리 중... (${data.status || 'queued'})`);
-    await new Promise(resolve => setTimeout(resolve, pollDelayMs));
-  }
-
-  throw new Error('OCR 처리 시간이 너무 오래 걸립니다.');
 }
 
 function setProgress(pct, file, status) {
@@ -435,7 +499,7 @@ function renderTable() {
 
   $('tableBody').innerHTML = rows.map(row => {
     if (editingId === row.id) {
-      return `<tr>
+      return `<tr style="background:rgba(200,240,74,0.04)">
         <td><input class="edit-input" id="em_${row.id}" value="${esc(row.month)}" style="width:44px"></td>
         <td><input class="edit-input" id="ed_${row.id}" value="${esc(row.day)}"   style="width:44px"></td>
         <td><input class="edit-input" id="ev_${row.id}" value="${esc(row.vendor)}"></td>
@@ -448,16 +512,25 @@ function renderTable() {
       </tr>`;
     }
     const hasRaw = row.raw_text && row.raw_text.trim();
+    // OCR 원래 값과 달라진 필드 표시
+    const vendorChanged = row._ocr && row._ocr.vendor !== row.vendor;
+    const descChanged   = row._ocr && row._ocr.description !== row.description;
     return `<tr>
       <td class="mono">${esc(row.month)}</td>
       <td class="mono">${esc(row.day)}</td>
-      <td><strong>${esc(row.vendor)}</strong></td>
-      <td style="color:#999">${esc(row.description)}</td>
+      <td>
+        <strong>${esc(row.vendor)}</strong>
+        ${vendorChanged ? `<span title="OCR 원문: ${esc(row._ocr.vendor)}" style="margin-left:5px;font-size:10px;color:#555;font-family:var(--mono);cursor:help">✎</span>` : ''}
+      </td>
+      <td style="color:#999">
+        ${esc(row.description)}
+        ${descChanged ? `<span title="OCR 원문: ${esc(row._ocr.description)}" style="margin-left:5px;font-size:10px;color:#555;font-family:var(--mono);cursor:help">✎</span>` : ''}
+      </td>
       <td class="amount">${parseInt(row.amount||0).toLocaleString('ko-KR')}</td>
       <td class="actions">
-        ${hasRaw ? `<button class="btn-edit" onclick="showRaw(${row.id})" style="margin-right:4px">📄</button>` : ''}
-        <button class="btn-edit" onclick="startEdit(${row.id})">✏</button>
-        <button class="btn-del"  onclick="deleteRow(${row.id})">✕</button>
+        ${hasRaw ? `<button class="btn-edit" onclick="showRaw(${row.id})" style="margin-right:4px" title="OCR 원문">📄</button>` : ''}
+        <button class="btn-edit" onclick="startEdit(${row.id})" title="수정">✏</button>
+        <button class="btn-del"  onclick="deleteRow(${row.id})" title="삭제">✕</button>
       </td>
     </tr>`;
   }).join('');
@@ -466,14 +539,52 @@ function renderTable() {
 function startEdit(id) { editingId = id; renderTable(); }
 function cancelEdit()  { editingId = null; renderTable(); }
 function deleteRow(id) { rows = rows.filter(r => r.id !== id); renderTable(); }
-function saveEdit(id) {
+
+async function saveEdit(id) {
   const r = rows.find(r => r.id === id);
   if (!r) return;
-  r.month       = $(`em_${id}`).value;
-  r.day         = $(`ed_${id}`).value;
-  r.vendor      = $(`ev_${id}`).value;
-  r.description = $(`ec_${id}`).value;
-  r.amount      = $(`ea_${id}`).value.replace(/,/g,'');
+
+  const updated = {
+    month:       $(`em_${id}`).value.trim(),
+    day:         $(`ed_${id}`).value.trim(),
+    vendor:      $(`ev_${id}`).value.trim(),
+    description: $(`ec_${id}`).value.trim(),
+    amount:      $(`ea_${id}`).value.replace(/,/g, '').trim(),
+  };
+
+  // OCR 원본값과 비교해 /feedback 전송 → 사전 학습
+  const learnFields = ['vendor', 'description'];
+  let learnedAny = false;
+  for (const field of learnFields) {
+    // _ocr에 보존된 OCR 원본값 사용 (이미 수정된 값이 덮여쓰이지 않도록)
+    const ocr_value       = (r._ocr?.[field] || r[field] || '').trim();
+    const corrected_value = updated[field];
+    if (ocr_value && corrected_value && ocr_value !== corrected_value) {
+      try {
+        const res = await fetch(`${API}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ocr_value, corrected_value }),
+        });
+        const fb = await res.json();
+        if (fb.learned && fb.action !== 'noop') {
+          learnedAny = true;
+          showToast(`📖 사전 ${fb.action === 'created' ? '추가' : '업데이트'}: "${fb.correct_word}"`, 'learned');
+          // 사전 패널이 열려있으면 갱신
+          if ($('dictPanel').classList.contains('open')) loadDict();
+        }
+      } catch(e) {
+        console.warn('[보정사전] feedback 전송 실패', e);
+      }
+    }
+  }
+
+  // OCR 원본값 유지 (사전 학습 비교 기준으로 계속 사용)
+  r._ocr = r._ocr || {};
+  r._ocr.vendor      = r._ocr.vendor      || r.vendor;
+  r._ocr.description = r._ocr.description || r.description;
+
+  Object.assign(r, updated);
   editingId = null;
   renderTable();
 }
@@ -490,28 +601,162 @@ $('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) clo
 function addManualRow() {
   const v = $('inV').value.trim(), a = $('inA').value.trim();
   if (!v && !a) { alert('거래처명 또는 금액을 입력하세요.'); return; }
-  rows.push({ id: nextId++, month: $('inM').value.trim(), day: $('inD').value.trim(),
-              vendor: v || '-', description: $('inDesc').value.trim() || '-',
-              amount: a || '0', raw_text: '' });
+  const newRow = {
+    id: nextId++,
+    month: $('inM').value.trim(), day: $('inD').value.trim(),
+    vendor: v || '-', description: $('inDesc').value.trim() || '-',
+    amount: a || '0', raw_text: '',
+    _ocr: null,
+  };
+  rows.push(newRow);
+  sortRowsByPaymentTime();
   ['inM','inD','inV','inDesc','inA'].forEach(id => $(id).value = '');
   renderTable();
 }
 
-// ── CSV ──
-function downloadCSV() {
+// ── Excel(xlsx) 다운로드 ──
+async function downloadCSV() {
   if (!rows.length) return;
-  const headers = ['월','일','거래처명','지출내용','금액 (원)'];
-  const csv = [
-    headers.join(','),
-    ...rows.map(r =>
-      [r.month, r.day, `"${(r.vendor||'').replace(/"/g,'""')}"`,
-       `"${(r.description||'').replace(/"/g,'""')}"`, r.amount].join(',')
-    )
-  ].join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = '영수증_지출내역.csv'; a.click();
-  URL.revokeObjectURL(a.href);
+  try {
+    const res = await fetch(`${API}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rows: rows.map(r => ({
+          month:       r.month,
+          day:         r.day,
+          vendor:      r.vendor,
+          description: r.description,
+          amount:      r.amount,
+          image_id:    r.image_id || null,
+        })),
+        order: imageOrder,
+      }),
+    });
+    if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = '영수증_지출내역.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('다운로드 실패: ' + e.message, 'warn');
+  }
+}
+
+// ── 보정 사전 패널 ──
+async function openDict() {
+  $('dictPanel').classList.add('open');
+  $('dictOverlay').classList.add('open');
+  await loadDict();
+}
+function closeDict() {
+  $('dictPanel').classList.remove('open');
+  $('dictOverlay').classList.remove('open');
+}
+
+async function loadDict() {
+  try {
+    const res = await fetch(`${API}/corrections`);
+    const data = await res.json();
+    dictData = data.corrections || [];
+    renderDict();
+  } catch(e) {
+    $('dictBody').innerHTML = `<div class="dict-empty">서버에 연결할 수 없습니다</div>`;
+  }
+}
+
+function renderDict() {
+  const q = ($('dictSearch').value || '').trim().toLowerCase();
+
+  // 검색 필터
+  const filtered = dictData.filter(e => {
+    if (!q) return true;
+    if ((e.correct_word||'').includes(q)) return true;
+    if ((e.typo_variants||[]).some(v => v.includes(q))) return true;
+    if ((e.category||'').includes(q)) return true;
+    return false;
+  });
+
+  $('dictCount').textContent = `${filtered.length} / ${dictData.length} 항목`;
+
+  if (!filtered.length) {
+    $('dictBody').innerHTML = `<div class="dict-empty">${q ? '검색 결과 없음' : '항목 없음'}</div>`;
+    return;
+  }
+
+  // 카테고리별 그룹
+  const groups = {};
+  filtered.forEach(e => {
+    const cat = e.category || 'etc';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(e);
+  });
+
+  const catLabel = {
+    branch_suffix:    '지점 접미사',
+    place_name:       '지명',
+    store_name:       '상호명',
+    receipt_keywords: '영수증 키워드',
+    payment_method:   '결제 수단',
+    date_time:        '날짜/시간',
+    common_words:     '공통 단어',
+    user_learned:     '사용자 학습',
+    etc:              '기타',
+  };
+
+  $('dictBody').innerHTML = Object.entries(groups).map(([cat, entries]) => `
+    <div class="dict-cat-label">${catLabel[cat] || cat}</div>
+    ${entries.map((e, i) => {
+      const allIdx = dictData.indexOf(e);
+      const variants = (e.typo_variants || []);
+      return `
+      <div class="dict-entry">
+        <div class="dict-entry-header">
+          <span class="dict-correct">${esc(e.correct_word)}</span>
+          <div class="dict-entry-actions">
+            <button class="btn-dict-del" onclick="deleteEntry(${allIdx})" title="항목 삭제">삭제</button>
+          </div>
+        </div>
+        <div class="dict-variants">
+          ${variants.map(v =>
+            `<span class="dict-variant${v===e.correct_word?' is-same':''}">${esc(v)}</span>`
+          ).join('')}
+        </div>
+      </div>`;
+    }).join('')}
+  `).join('');
+}
+
+async function deleteEntry(idx) {
+  if (!confirm('이 보정 항목을 삭제할까요?')) return;
+  try {
+    const res = await fetch(`${API}/corrections/${idx}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('항목이 삭제되었습니다', '');
+      await loadDict();
+    }
+  } catch(e) {
+    showToast('삭제 실패', 'warn');
+  }
+}
+
+// ── Toast ──
+function showToast(msg, type = '') {
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' ' + type : '');
+  t.textContent = msg;
+  $('toastWrap').appendChild(t);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => t.classList.add('show'));
+  });
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 300);
+  }, 2800);
 }
 
 function esc(s) {

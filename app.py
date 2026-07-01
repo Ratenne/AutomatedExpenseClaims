@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import logging
 import threading
 from typing import Optional
 import cv2
@@ -13,29 +14,57 @@ from flask_cors import CORS
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
+logger = logging.getLogger(__name__)
+
+
+def _img_debug(stage: str, **fields) -> None:
+    parts = ' '.join(f'{key}={value}' for key, value in fields.items())
+    logger.info('[IMG_DEBUG] %s %s', stage, parts)
+
 # ── 오타 보정 사전 경로 ──
 CORRECTIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'corrections.json')
 _corrections_lock = threading.Lock()
 _corrections_cache = None
 
+
 # ── Tesseract 경로 설정 ──
+_ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+_LOCAL_TESSDATA_DIR = os.path.join(_ROOT_DIR, 'tessdata')
+
 if platform.system() == 'Windows':
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-    TESSDATA_DIR = r'C:\Program Files\Tesseract-OCR\tessdata'
+    _SYSTEM_TESSDATA_DIR = r'C:\Program Files\Tesseract-OCR\tessdata'
 else:
-    TESSDATA_DIR = '/usr/share/tesseract-ocr/5/tessdata'
+    _SYSTEM_TESSDATA_DIR = '/usr/share/tesseract-ocr/5/tessdata'
 
-os.environ.setdefault('TESSDATA_PREFIX', TESSDATA_DIR)
+TESSDATA_DIR = _LOCAL_TESSDATA_DIR if os.path.isdir(_LOCAL_TESSDATA_DIR) else _SYSTEM_TESSDATA_DIR
 
-# kor_best 모델 존재 여부에 따라 자동 선택
-best_kor = os.path.join(TESSDATA_DIR, 'kor_best.traineddata')
-best_eng = os.path.join(TESSDATA_DIR, 'eng_best.traineddata')
-TESS_LANG = 'kor_best+eng_best' if (os.path.exists(best_kor) and os.path.exists(best_eng)) else 'kor+eng'
+
+def _traineddata_exists(name: str) -> bool:
+    return os.path.exists(os.path.join(TESSDATA_DIR, f'{name}.traineddata'))
+
+
+def _pick_tess_lang(candidates: tuple[str, ...]) -> str:
+    for lang in candidates:
+        parts = lang.split('+')
+        if all(_traineddata_exists(part) for part in parts):
+            return lang
+    for lang in ('kor_best', 'kor', 'eng_best', 'eng'):
+        if _traineddata_exists(lang):
+            return lang
+    return candidates[-1]
+
+
+os.environ['TESSDATA_PREFIX'] = os.path.dirname(TESSDATA_DIR)
+
+# 설치된 tessdata에 맞춰 자동 선택
+TESS_LANG = _pick_tess_lang(('kor_best+eng_best', 'kor+eng'))
 
 # 가맹점명 크롭 재OCR 전용: 한글 단독 모델
 # eng_best를 함께 쓰면 영문 글자에 끌려 한글 뒷부분(센텀점 등)을 영문으로
 # 오인식하는 경향이 강해서, 가맹점명 영역은 한글 모델만 사용한다.
-KOR_ONLY_LANG = 'kor_best' if os.path.exists(best_kor) else 'kor'
+KOR_ONLY_LANG = _pick_tess_lang(('kor_best', 'kor', TESS_LANG))
+
 
 # PSM별 config (멀티패스에서 사용)
 def _cfg(psm: int) -> str:
@@ -107,19 +136,46 @@ def apply_corrections(text: str) -> str:
     return text
 
 
-def _diff_strings(a: str, b: str):
-    """a, b의 공통 접두/접미를 제거하고 차이나는 가운데 부분만 반환
-    예) ('센턴점', '센텀점') → ('턴', '텀')
-        ('이마트24 MEIAIO|AALIEH', '이마트24 센텀사이언스파트점')
-            → ('MEIAIO|AALIEH', '센텀사이언스파트점')"""
-    la, lb = len(a), len(b)
+def _diff_with_context(ocr: str, correct: str):
+    """두 문자열에서 달라진 부분을 찾고,
+    그 부분이 속한 단어(공백 기준) 전체를 (typo_word, correct_word)로 반환.
+
+    예) ('어오케이커피 센팀점', '어오케이커피 센텀점') → ('센팀점', '센텀점')
+        ('신용카듲',             '신용카드')           → ('신용카듲', '신용카드')
+    """
+    la, lb = len(ocr), len(correct)
+    # 공통 접두 길이
     p = 0
-    while p < la and p < lb and a[p] == b[p]:
+    while p < la and p < lb and ocr[p] == correct[p]:
         p += 1
+    # 공통 접미 길이
     s = 0
-    while s < (la - p) and s < (lb - p) and a[la - 1 - s] == b[lb - 1 - s]:
+    while s < (la - p) and s < (lb - p) and ocr[la-1-s] == correct[lb-1-s]:
         s += 1
-    return a[p:la - s], b[p:lb - s]
+
+    ocr_diff  = ocr[p: la - s] if s else ocr[p:]
+    corr_diff = correct[p: lb - s] if s else correct[p:]
+
+    if not ocr_diff or not corr_diff or ocr_diff == corr_diff:
+        return None, None
+
+    def _word_at(full: str, start: int, end: int) -> str:
+        """full 문자열에서 start~end 구간을 포함하는 단어 반환"""
+        tokens = re.split(r'(\s+)', full)
+        pos = 0
+        for tok in tokens:
+            tok_end = pos + len(tok)
+            if not tok.strip():
+                pos = tok_end
+                continue
+            if pos <= start < tok_end or pos < end <= tok_end:
+                return tok
+            pos = tok_end
+        return full[start:end]
+
+    typo_word    = _word_at(ocr,     p, la - s)
+    correct_word = _word_at(correct, p, lb - s)
+    return typo_word, correct_word
 
 
 def _guess_category(correct_word: str) -> str:
@@ -168,10 +224,10 @@ def learn_correction(ocr_value: str, corrected_value: str) -> Optional[dict]:
     if _char_similarity(ocr_value, corrected_value) < 0.4:
         return None
 
-    typo, correct = _diff_strings(ocr_value, corrected_value)
+    typo, correct = _diff_with_context(ocr_value, corrected_value)
     if not typo or not correct or typo == correct:
         return None
-    if len(typo) > 8 or len(correct) > 8:
+    if len(typo) > 12 or len(correct) > 12:
         return None
 
     with _corrections_lock:
@@ -420,6 +476,39 @@ def extract_time_meal(lines):
     return ''
 
 
+def extract_payment_time(lines):
+    """결제 시각 추출. 반환 형식은 HH:MM 또는 ''"""
+    for line in lines:
+        m = re.search(r'오전\s*(\d{1,2})[:\.]?(\d{2})', line)
+        if m:
+            h = int(m.group(1))
+            if 1 <= h <= 12:
+                return f'{h:02d}:{m.group(2)}'
+        m = re.search(r'오후\s*(\d{1,2})[:\.]?(\d{2})', line)
+        if m:
+            h = int(m.group(1)) + 12
+            if h == 24:
+                h = 12
+            return f'{h:02d}:{m.group(2)}'
+        m = re.search(r'\b(AM|am)\s*(\d{1,2})[:\.]?(\d{2})', line)
+        if m:
+            h = int(m.group(2))
+            if 1 <= h <= 12:
+                return f'{h:02d}:{m.group(3)}'
+        m = re.search(r'\b(PM|pm)\s*(\d{1,2})[:\.]?(\d{2})', line)
+        if m:
+            h = int(m.group(2)) + 12
+            if h == 24:
+                h = 12
+            return f'{h:02d}:{m.group(3)}'
+        m = re.search(r'\b(\d{1,2}):(\d{2})(?::\d{2})?\b', line)
+        if m:
+            h = int(m.group(1))
+            if 0 <= h <= 23:
+                return f'{h:02d}:{m.group(2)}'
+    return ''
+
+
 def extract_amount(lines, full_text):
     """합계/총액 키워드 우선, fallback은 전체 텍스트 최댓값
     음수 금액(-9,900원)도 절댓값으로 처리"""
@@ -613,6 +702,7 @@ def parse_receipt(text: str, crop_candidates: list = None) -> dict:
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
     month, day  = extract_date(lines)
+    payment_time = extract_payment_time(lines)
     meal        = extract_time_meal(lines)
     amount      = extract_amount(lines, text)
 
@@ -639,9 +729,109 @@ def parse_receipt(text: str, crop_candidates: list = None) -> dict:
         'vendor':      vendor or '인식 실패',
         'description': description or '수동 입력 필요',
         'amount':      amount,
+        'payment_time': payment_time,
         'raw_text':    text,
     }
 
+
+import uuid
+import io
+import tempfile
+from pathlib import Path
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.worksheet.page import PageMargins   # ← 추가
+from openpyxl.utils import get_column_letter
+from PIL import Image as PILImage
+from flask import send_file
+
+# # 업로드된 이미지를 메모리에 임시 보관 {image_id: bytes}
+# _image_store: dict = {}
+# _image_store_lock = threading.Lock()
+
+# 업로드 이미지를 임시 디렉토리에 파일로 저장
+# (메모리 저장은 서버 재시작 시 소실되므로 파일로 유지)
+_IMAGE_DIR = Path(tempfile.gettempdir()) / 'receipt_ocr_images'
+_IMAGE_DIR.mkdir(exist_ok=True)
+_image_store_lock = threading.Lock()
+
+
+import PIL.ImageFile
+PIL.ImageFile.LOAD_TRUNCATED_IMAGES = True   # 잘린 JPEG/PNG도 부분 복원
+
+# HEIC 지원 (pillow-heif 설치 시)
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
+def _save_image(image_id: str, img_bytes: bytes) -> None:
+    """이미지를 RGB PNG로 정규화 후 저장.
+    3단계 폴백 전략:
+      1) PIL (LOAD_TRUNCATED_IMAGES=True) — 잘린 JPEG/PNG/HEIC 등 대부분 커버
+      2) cv2.imdecode                      — PIL이 포맷 식별 실패 시
+      3) 원본 바이트 그대로 저장            — 모두 실패 시 (export 시 오류 메시지 표시)
+    """
+    dest_png  = _IMAGE_DIR / f'{image_id}.png'
+    dest_raw  = _IMAGE_DIR / f'{image_id}.raw'
+    dest_err  = _IMAGE_DIR / f'{image_id}.err'
+
+    if not img_bytes or len(img_bytes) < 4:
+        dest_err.write_text('빈 이미지 데이터', encoding='utf-8')
+        return
+
+    # ── 전략 1: PIL ──
+    try:
+        buf = io.BytesIO(img_bytes)
+        buf.seek(0)
+        pil = PILImage.open(buf)
+        pil.load()
+        if pil.mode in ('RGBA', 'P', 'LA'):
+            bg = PILImage.new('RGB', pil.size, (255, 255, 255))
+            mask = pil.split()[3] if pil.mode in ('RGBA', 'LA') else None
+            bg.paste(pil, mask=mask)
+            pil = bg
+        elif pil.mode != 'RGB':
+            pil = pil.convert('RGB')
+        pil.save(dest_png, format='PNG')
+        return
+    except Exception as e1:
+        pass
+
+    # ── 전략 2: cv2 ──
+    try:
+        arr = np.frombuffer(img_bytes, np.uint8)
+        img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img_cv is not None:
+            img_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+            pil = PILImage.fromarray(img_rgb)
+            pil.save(dest_png, format='PNG')
+            return
+    except Exception as e2:
+        pass
+
+    # ── 전략 3: 원본 저장 (export 시 재시도) ──
+    dest_raw.write_bytes(img_bytes)
+    dest_err.write_text(
+        f'PIL 실패: 포맷 미인식\ncv2 실패: 디코딩 불가\n원본 바이트 저장됨 ({len(img_bytes):,}B)',
+        encoding='utf-8'
+    )
+
+def _load_image(image_id: str) -> tuple:
+    """(img_bytes_or_None, err_msg_or_None) 반환"""
+    png = _IMAGE_DIR / f'{image_id}.png'
+    raw = _IMAGE_DIR / f'{image_id}.raw'
+    err = _IMAGE_DIR / f'{image_id}.err'
+
+    err_msg = err.read_text(encoding='utf-8') if err.exists() else None
+
+    if png.exists():
+        return png.read_bytes(), None       # 정상 PNG
+    if raw.exists():
+        return raw.read_bytes(), err_msg    # 원본 + 오류 메시지
+    return None, err_msg or '이미지 파일 없음'
 
 # ──────────────────────────────────────────
 #  라우트
@@ -657,14 +847,31 @@ def ocr():
         return jsonify({'error': '이미지가 없습니다'}), 400
 
     img_bytes = request.files['image'].read()
+    _img_debug('ocr-received', filename=getattr(request.files['image'], 'filename', ''), size=len(img_bytes))
+
+    # # 이미지 메모리 저장
+    # image_id = str(uuid.uuid4())
+    # with _image_store_lock:
+    #     _image_store[image_id] = img_bytes
+
+    # 이미지 파일로 저장
+    image_id = str(uuid.uuid4())
+    _save_image(image_id, img_bytes)
+    
     try:
+        _img_debug('ocr-preprocess-start', image_id=image_id)
         raw_gray, sharp = preprocess(img_bytes)
+        _img_debug('ocr-preprocess-done', image_id=image_id, raw_shape=getattr(raw_gray, 'shape', None), sharp_shape=getattr(sharp, 'shape', None))
         text            = run_ocr(raw_gray, sharp)
+        _img_debug('ocr-run-done', image_id=image_id, text_len=len(text or ''))
         crop_candidates = _reocr_vendor_crop(raw_gray, sharp)
+        _img_debug('ocr-crop-done', image_id=image_id, crop_count=len(crop_candidates or []))
         result          = parse_receipt(text, crop_candidates)
+        result['image_id'] = image_id
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.exception('[IMG_DEBUG] ocr-failed image_id=%s', image_id)
+        return jsonify({'error': str(e), 'image_id': image_id}), 500
 
 
 @app.route('/feedback', methods=['POST'])
@@ -686,8 +893,228 @@ def feedback():
 
 @app.route('/corrections', methods=['GET'])
 def get_corrections():
-    """현재 오타 보정 사전 조회 (디버깅/확인용)"""
+    """현재 오타 보정 사전 조회"""
     return jsonify(_load_corrections())
+
+
+@app.route('/corrections/<int:idx>', methods=['DELETE'])
+def delete_correction(idx):
+    """보정 사전 항목 삭제 (인덱스 기준)"""
+    with _corrections_lock:
+        data = _load_corrections()
+        entries = data.get('corrections', [])
+        if idx < 0 or idx >= len(entries):
+            return jsonify({'ok': False, 'error': '인덱스 범위 초과'}), 404
+        removed = entries.pop(idx)
+        _save_corrections(data)
+        return jsonify({'ok': True, 'removed': removed})
+
+
+@app.route('/export', methods=['POST'])
+def export():
+    """지출내역 시트 + 영수증 이미지 시트가 포함된 xlsx 반환.
+
+    body (JSON):
+    {
+      "rows": [{"month","day","vendor","description","amount","image_id"?}, ...],
+      "order": ["image_id", ...]   // 시간순 image_id 목록
+    }
+    이미지 시트: 5열씩, order 순서대로 배치. image_id 없는 row는 제외.
+    """
+    data   = request.get_json(silent=True) or {}
+    rows   = data.get('rows', [])
+    order  = data.get('order', [])   # 업로드 순서 (시간순)
+
+    wb = Workbook()
+
+    # ── 시트 1: 지출내역 ──
+    ws1 = wb.active
+    ws1.title = '지출내역'
+
+    header_fill   = PatternFill('solid', start_color='1A1A2E')
+    header_font   = Font(bold=True, color='C8F04A', name='Arial', size=10)
+    body_font     = Font(name='Arial', size=10)
+    center        = Alignment(horizontal='center', vertical='center')
+    right         = Alignment(horizontal='right',  vertical='center')
+    thin          = Side(style='thin', color='2A2A40')
+    border        = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    headers = ['월', '일', '거래처명', '지출내용', '금액 (원)']
+    col_widths = [6, 6, 28, 20, 14]
+    for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws1.cell(row=1, column=ci, value=h)
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = center
+        cell.border    = border
+        ws1.column_dimensions[get_column_letter(ci)].width = w
+
+    for ri, row in enumerate(rows, 2):
+        vals = [row.get('month',''), row.get('day',''),
+                row.get('vendor',''), row.get('description',''),
+                int(row.get('amount', 0) or 0)]
+        for ci, v in enumerate(vals, 1):
+            cell = ws1.cell(row=ri, column=ci, value=v)
+            cell.font      = body_font
+            cell.border    = border
+            cell.alignment = right if ci == 5 else center if ci <= 2 else Alignment(vertical='center')
+        ws1.row_dimensions[ri].height = 18
+
+    # 합계 행
+    if rows:
+        total_row = len(rows) + 2
+        ws1.cell(row=total_row, column=4, value='합계').font = Font(bold=True, name='Arial', size=10)
+        ws1.cell(row=total_row, column=5,
+                 value=f'=SUM(E2:E{total_row-1})').font = Font(bold=True, name='Arial', size=10, color='4ADE80')
+        ws1.cell(row=total_row, column=5).alignment = right
+
+    ws1.freeze_panes = 'A2'
+    ws1.row_dimensions[1].height = 22
+
+    # ── 시트 2: 영수증 이미지 ──
+    ws2 = wb.create_sheet('영수증 이미지')
+
+    # ── 인쇄 페이지 설정 ──
+    _MARGIN_INCH = 0.5 / 2.54          # 0.5cm → 인치
+    ws2.page_setup.orientation = 'landscape'
+    ws2.page_setup.paperSize   = 9
+    ws2.page_setup.fitToPage   = True   # ← 추가
+    ws2.page_setup.fitToWidth  = 1      # ← 추가: 가로 1페이지에 맞춤
+    ws2.page_setup.fitToHeight = 1      # ← 추가: 세로 1페이지에 맞춤
+    ws2.sheet_properties.pageSetUpPr.fitToPage = True   # ← 추가: Excel 인식용
+    ws2.page_margins = PageMargins(
+        top=_MARGIN_INCH, bottom=_MARGIN_INCH,
+        left=_MARGIN_INCH, right=_MARGIN_INCH,
+        header=0, footer=0,
+    )
+
+    COLS      = 5              # 열 수
+    THUMB_W   = 600            # 썸네일 픽셀 너비
+    THUMB_H   = 800            # 썸네일 픽셀 높이
+    GAP_PX    = 19             # 열 간 공백 (px) ≈ 0.5cm @ 96dpi
+
+    # Excel 단위 변환
+    # 열 너비: px / 7  (기본 폰트 Calibri 11pt 기준)
+    # 행 높이: px * 0.75  (1pt = 1.333px)
+    CELL_W      = round(THUMB_W / 7, 1)   # ≈ 85.7 Excel units
+    IMG_ROW_H   = round(THUMB_H * 0.75)   # ≈ 600 pt
+    GAP_ROW_H   = round(GAP_PX  * 0.75)   # ≈ 14 pt  (0.5cm 공백)
+    LBL_ROW_H   = 14                        # pt
+    # 행 그룹 구성: [이미지행, 라벨행, 공백행] → 3행 단위
+    ROWS_PER_GROUP = 3
+
+    # 열 너비 설정
+    for ci in range(1, COLS + 1):
+        ws2.column_dimensions[get_column_letter(ci)].width = CELL_W
+
+    # ── 날짜/시간 기준 정렬 ──
+    # month → day → 식사 순서(조식=0, 중식=1, 석식=2, 기타=3) 순으로 정렬
+    MEAL_ORDER = {'조식': 0, '중식': 1, '석식': 2}
+
+    def _sort_key(row):
+        try:    mo = int(row.get('month') or 0)
+        except: mo = 0
+        try:    d  = int(row.get('day')   or 0)
+        except: d  = 0
+        meal = MEAL_ORDER.get(row.get('description', ''), 3)
+        return (mo, d, meal)
+
+    id_to_row   = {r.get('image_id'): r for r in rows if r.get('image_id')}
+    ordered_ids = [r['image_id'] for r in sorted(id_to_row.values(), key=_sort_key)]
+
+    # with _image_store_lock:
+    #     store_snap = dict(_image_store)
+
+    for seq, image_id in enumerate(ordered_ids):
+        row_data           = id_to_row[image_id]
+        img_bytes, load_err = _load_image(image_id)
+
+        col_idx = (seq % COLS) + 1
+        group   = seq // COLS
+        img_row = group * ROWS_PER_GROUP + 1
+        lbl_row = img_row + 1
+        gap_row = img_row + 2
+
+        ws2.row_dimensions[img_row].height = IMG_ROW_H
+        ws2.row_dimensions[lbl_row].height = LBL_ROW_H
+        ws2.row_dimensions[gap_row].height = GAP_ROW_H
+
+        # 라벨: 월/일 · 거래처명 · 금액
+        mo         = row_data.get('month', '')
+        day        = row_data.get('day', '')
+        date_str   = f'{mo}/{day}' if mo and day else ''
+        amount_str = f'{int(row_data.get("amount", 0) or 0):,}원'
+        label      = f'{date_str}  {row_data.get("vendor","")}  {amount_str}'
+        lbl_cell   = ws2.cell(row=lbl_row, column=col_idx, value=label)
+        lbl_cell.font      = Font(name='Arial', size=8, color='555555')
+        lbl_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+        # 이미지 데이터 없음
+        if not img_bytes:
+            err_text = f'이미지 없음\n{load_err or ""}'
+            cell = ws2.cell(row=img_row, column=col_idx, value=err_text)
+            cell.font      = Font(name='Arial', size=8, color='FF4444')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            continue
+
+        try:
+            # pil_img = PILImage.open(io.BytesIO(img_bytes))
+            buf = io.BytesIO(img_bytes)
+            buf.seek(0)
+            _img_debug('export-open-start', image_id=image_id, bytes_size=len(img_bytes), head=img_bytes[:16].hex())
+            pil_img = PILImage.open(buf)
+            pil_img.load()   # 실제 디코딩 강제 → 손상 이미지 즉시 감지            
+            _img_debug('export-open-ok', image_id=image_id, format=pil_img.format, mode=pil_img.mode, size=pil_img.size)
+            pil_img.thumbnail((THUMB_W, THUMB_H), PILImage.LANCZOS)
+
+            # RGBA / 팔레트 모드 → RGB 변환
+            if pil_img.mode in ('RGBA', 'P', 'LA'):
+                bg = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                mask = pil_img.split()[3] if pil_img.mode in ('RGBA', 'LA') else None
+                bg.paste(pil_img, mask=mask)
+                pil_img = bg
+            elif pil_img.mode != 'RGB':
+                pil_img = pil_img.convert('RGB')
+
+            img_buf = io.BytesIO()
+            pil_img.save(img_buf, format='PNG')
+            img_buf.seek(0)
+
+            # 실제 썸네일 크기 기준으로 Excel 이미지 크기 계산
+            actual_w, actual_h = pil_img.size
+            xl_img        = XLImage(img_buf)
+            xl_img.width  = actual_w
+            xl_img.height = actual_h
+
+            ws2.add_image(xl_img, f'{get_column_letter(col_idx)}{img_row}')
+
+            # 원본이 손상돼 cv2/raw로 저장된 경우 셀에 경고 텍스트도 표시
+            if load_err:
+                cell = ws2.cell(row=img_row, column=col_idx,
+                                value=f'⚠ 부분 복원됨\n{load_err[:80]}')
+                cell.font      = Font(name='Arial', size=7, color='F59E0B')
+                cell.alignment = Alignment(horizontal='center', vertical='top', wrap_text=True)
+
+        except Exception as e:
+            # 저장·복원 모두 실패한 최종 오류: 오류 내용 전체 표시
+            lines = [f'이미지 변환 실패', f'{type(e).__name__}: {e}']
+            if load_err:
+                lines.append(f'저장 시 오류: {load_err}')
+            cell = ws2.cell(row=img_row, column=col_idx, value='\n'.join(lines))
+            cell.font      = Font(name='Arial', size=8, color='FF4444')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            
+    # xlsx → BytesIO
+    out_buf = io.BytesIO()
+    wb.save(out_buf)
+    out_buf.seek(0)
+
+    return send_file(
+        out_buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='영수증_지출내역.xlsx',
+    )
 
 
 if __name__ == '__main__':

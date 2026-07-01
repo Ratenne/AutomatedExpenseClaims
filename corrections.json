@@ -176,8 +176,16 @@
       ]
     },
     {
-      "category": "store_name",
-      "correct_word": "지에스25",
+      "category": "branch_suffix",
+      "correct_word": "S센팀시티역점",
+      "typo_variants": [
+        "5센팀시티역점",
+        "S센팀시티역점"
+      ]
+    },
+    {
+      "category": "user_learned",
+      "correct_word": "지에스(GS)25",
       "typo_variants": [
         "지에스(65)25",
         "지에스6525",
