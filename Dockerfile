@@ -4,8 +4,11 @@ FROM python:3.11-slim
 # 2. Tesseract OCR 엔진 및 다운로드를 위한 wget 설치 (언어 팩은 apt로 안 받음)
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
+    tesseract-ocr-kor \
+    tesseract-ocr-eng \
     wget \
     && rm -rf /var/lib/apt/lists/*
+    
 
 # 3. 작업 디렉토리 설정
 WORKDIR /app
@@ -29,5 +32,5 @@ RUN chmod -R 777 /app/tessdata
 # 6. 허깅페이스 전용 포트 설정
 EXPOSE 7860
 
-# 7. 서버 실행 명령어
+# 7. 서버 실행 명령어 (포트를 7860으로 강제 주입)
 CMD ["python", "app.py"]
