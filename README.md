@@ -1,7 +1,6 @@
 # 영수증 자동 지출 증빙 시스템 (Hugging Face 배포 버전)
 https://huggingface.co/spaces/Ratenne/AutomatedExpenseClaim
 
-https://automatedexpenseclaims.onrender.com/
 
 # 영수증 → 엑셀 변환기
 
