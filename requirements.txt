@@ -1,5 +1,0 @@
-Flask
-pytesseract
-Pillow
-opencv-python-headless
-flask-cors
